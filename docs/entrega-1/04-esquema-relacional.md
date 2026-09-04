@@ -54,3 +54,26 @@ En este esquema todas las FK son `NOT NULL`, es decir, la relación es obligator
 | `receta`                | `id_producto`    | `producto(id_producto)`       | Sí (`NOT NULL`) |
 | `receta`                | `id_ingrediente` | `ingrediente(id_ingrediente)` | Sí (`NOT NULL`) |
 | `movimiento_inventario` | `id_ingrediente` | `ingrediente(id_ingrediente)` | Sí (`NOT NULL`) |
+
+#Políticas de borrado (ON DELETE)
+
+Definir una FK no basta: también hay que decidir qué ocurre con las filas hijas cuando se intenta borrar la fila padre que referencian. Esa decisión se declara con ON DELETE y se conoce como *política o acción referencial*.
+
+##Política adoptada en este esquema
+
+*Sabor & Stock aplica ON DELETE RESTRICT en todas sus relaciones.*
+
+La razón de negocio es que el restaurante necesita conservar el historial completo de compras, recetas y movimientos de inventario para auditoría, costeo y trazabilidad: ningún proveedor, ingrediente, categoría, unidad de medida, producto o compra debe poder eliminarse mientras existan registros que dependan de él.
+
+Las bajas reales se resuelven con *desactivación lógica* (por ejemplo, un futuro atributo activo en catálogos), nunca con DELETE físico sobre un padre referenciado.
+
+| Relación (padre → hijo)                 | Política | Efecto al intentar DELETE del padre                                 |
+| --------------------------------------- | -------- | ------------------------------------------------------------------- |
+| unidad_medida → ingrediente         | RESTRICT | Bloquea el borrado si existen ingredientes con esa unidad.          |
+| categoria → producto                | RESTRICT | Bloquea el borrado si existen productos en esa categoría.           |
+| proveedor → compra                  | RESTRICT | Bloquea el borrado si el proveedor tiene compras registradas.       |
+| ingrediente → receta                | RESTRICT | Bloquea el borrado si el ingrediente se usa en alguna receta.       |
+| ingrediente → detalle_compra        | RESTRICT | Bloquea el borrado si el ingrediente aparece en alguna compra.      |
+| ingrediente → movimiento_inventario | RESTRICT | Bloquea el borrado si el ingrediente tiene movimientos registrados. |
+| producto → receta                   | RESTRICT | Bloquea el borrado si el producto tiene una receta definida.        |
+| compra → detalle_compra             | RESTRICT | Bloquea el borrado si la compra tiene líneas de detalle.            |
