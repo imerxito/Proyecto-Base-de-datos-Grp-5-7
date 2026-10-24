@@ -2,7 +2,7 @@
 
 Este directorio contiene únicamente mi bloque: auditoría de normalización, diccionario de las tablas que existen en Supabase y los SQL de vistas y vínculo opcional con Auth.
 
-El proyecto desplegado tiene 16 tablas y difiere del ZIP base de 20 tablas. Los scripts se adaptan al esquema real; el archivo `006_supabase_opcional.sql` del ZIP apunta a la tabla singular `usuario` y no corresponde directamente. La adaptación para `public.usuarios` ya está aplicada y verificada en Supabase. No se crean cuentas de empleados ni se incluyen credenciales.
+El proyecto Sabor y Stock cuenta con 16 tablas públicas. Aquí se documentan su normalización, el diccionario de datos, las vistas y el vínculo opcional con Supabase Auth. Los cambios están aplicados y verificados; no se crean cuentas de empleados ni se incluyen credenciales.
 
 - `AUDITORIA_NORMALIZACION.md`: dependencias y formas normales de las 16 tablas desplegadas.
 - `DICCIONARIO_TABLAS.md`: significado de las tablas reales del bloque de facturación, caja e historial.

@@ -1,6 +1,6 @@
 # Diccionario de las tablas reales relacionadas con mi bloque
 
-Este diccionario refleja el esquema que está desplegado en Supabase, no las tablas del ZIP base. El proyecto actual no tiene `detalle_factura` ni `historial_caja`; sus nombres y funciones no deben presentarse como equivalentes exactos.
+Este diccionario describe las tablas de facturación, caja e historial utilizadas en el sistema Sabor y Stock.
 
 ## `public.facturas`
 
@@ -14,7 +14,7 @@ Este diccionario refleja el esquema que está desplegado en Supabase, no las tab
 | `metodo_pago` | Medio de pago registrado (`EFECTIVO`, `TARJETA` o `TRANSFERENCIA`). |
 | `fecha_emision` | Fecha y hora de emisión. |
 
-## `public.comanda_detalles` (líneas de comanda; no es `detalle_factura`)
+## `public.comanda_detalles` (líneas de comanda)
 
 | Columna | Significado |
 |---|---|
@@ -38,7 +38,7 @@ Este diccionario refleja el esquema que está desplegado en Supabase, no las tab
 | `saldo_final` | Dinero contado al cerrar el turno. |
 | `estado` | Estado operativo (`ABIERTO` o `CERRADO`). |
 
-## `public.historiales` (registro genérico; no es `historial_caja`)
+## `public.historiales` (registro genérico)
 
 | Columna | Significado |
 |---|---|
@@ -50,4 +50,4 @@ Este diccionario refleja el esquema que está desplegado en Supabase, no las tab
 | `descripcion` | Detalle legible del evento, si se proporciona. |
 | `fecha_accion` | Fecha y hora en que se registró la acción. |
 
-> Diferencia pendiente para el grupo: `historiales` no conserva en columnas separadas el turno, el medio de pago ni el monto; no se debe documentar como si tuviera la estructura de `historial_caja` del diseño del ZIP.
+> `historiales` registra acciones de forma genérica; no conserva el turno, el medio de pago ni el monto en columnas separadas.

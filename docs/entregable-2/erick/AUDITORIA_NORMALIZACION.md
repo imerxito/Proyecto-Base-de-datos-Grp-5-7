@@ -1,8 +1,8 @@
-# Auditoría de normalización del esquema real de Supabase
+# Auditoría de normalización
 
 ## Alcance
 
-Esta auditoría corresponde a las 16 tablas públicas vistas en el proyecto **Sabor y Stock** el 24 de octubre de 2026. No reemplaza la auditoría del ZIP base: aquel describe 20 tablas distintas. La evaluación se limita a las dependencias que se pueden justificar por PK, `UNIQUE` y columnas observadas; no atribuye al esquema restricciones que no existen.
+La auditoría abarca las 16 tablas públicas de **Sabor y Stock**, revisadas el 24 de octubre de 2026. Se consideran las dependencias que se pueden justificar por PK, `UNIQUE` y restricciones declaradas; no se atribuyen al esquema reglas que no estén implementadas.
 
 ## Evaluación por tabla
 
@@ -36,4 +36,4 @@ Esta auditoría corresponde a las 16 tablas públicas vistas en el proyecto **Sa
 
 ## Conclusión
 
-Con las PK y claves `UNIQUE` observadas, las 16 relaciones alcanzan BCNF respecto de las dependencias funcionales declaradas. Esta conclusión no prueba reglas entre tablas ni agregados operativos: los totales de compra, el saldo de inventario, la coherencia factura-comanda y el estado de mesa necesitan controles adicionales si el grupo decide exigirlos. La auditoría de 20 tablas del paquete base debe mantenerse identificada como correspondiente al diseño original, no a la estructura desplegada en Supabase.
+Con las PK y claves `UNIQUE` observadas, las 16 relaciones alcanzan BCNF respecto de las dependencias funcionales declaradas. Esta conclusión no prueba reglas entre tablas ni agregados operativos: los totales de compra, el saldo de inventario, la coherencia factura-comanda y el estado de mesa requieren controles adicionales si el grupo decide exigirlos.
