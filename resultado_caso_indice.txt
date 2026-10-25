@@ -1,0 +1,25 @@
+# Resultado de caso de índice — plantilla de evidencia
+
+Fecha de ejecución:
+Base/entorno (no incluir contraseñas ni datos sensibles):
+Versión de PostgreSQL:
+Tabla y columnas consultadas:
+Cantidad aproximada de filas:
+Índice comprobado (nombre y definición):
+Comando ejecutado: `psql -X -d <base_de_pruebas> -f docs/entregable-2/evidencia/caso_indice.sql`
+
+## Salida real de EXPLAIN (ANALYZE, BUFFERS)
+
+Pegar aquí la salida completa, sin editar el plan ni los tiempos.
+
+## Interpretación
+
+- Plan observado:
+- Tiempo de ejecución reportado:
+- Bloques compartidos leídos/usados (si aparecen):
+- ¿Se utilizó el índice esperado?:
+- Observaciones:
+
+## Referencia histórica (no es una nueva medición)
+
+`Correciones.md` consigna para `idx_detalle_factura_factura`, con 120.014 líneas: antes `Seq Scan`, 19,758 ms y 883 páginas; después `Index Scan`, 0,154 ms y 6 páginas. Estos valores deben identificarse como históricos hasta que se vuelva a ejecutar la prueba en la versión vigente.
