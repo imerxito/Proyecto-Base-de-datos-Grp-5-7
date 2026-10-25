@@ -1,13 +1,10 @@
 # Aporte de Erick — Entrega 2
 
-Este directorio contiene únicamente mi bloque: auditoría de normalización, diccionario de las tablas que existen en Supabase y los SQL de vistas y vínculo opcional con Auth.
+Este aporte contiene la sección de auditoría de normalización, el diccionario de las cuatro tablas asignadas, la revisión de las migraciones 005 y 006 y una vista candidata para evaluar en la Entrega 3.
 
-El proyecto Sabor y Stock cuenta con 16 tablas públicas. Aquí se documentan su normalización, el diccionario de datos, las vistas y el vínculo opcional con Supabase Auth. Los cambios están aplicados y verificados; no se crean cuentas de empleados ni se incluyen credenciales.
+- `AUDITORIA_NORMALIZACION.md`: dependencias funcionales y excepciones E1–E5 del esquema de 20 tablas.
+- `DICCIONARIO_TABLAS.md`: significado de las columnas de `factura`, `detalle_factura`, `turno_caja` e `historial_caja`.
+- `VALIDACION_MIGRACIONES.md`: contenido, precondiciones y resultados consignados para las migraciones 005 y 006.
+- `sql/vista_propuesta_entrega_3.sql`: propuesta de vista mensual por producto y categoría, sin datos personales.
 
-- `AUDITORIA_NORMALIZACION.md`: dependencias y formas normales de las 16 tablas desplegadas.
-- `DICCIONARIO_TABLAS.md`: significado de las tablas reales del bloque de facturación, caja e historial.
-- `VALIDACION_SUPABASE.md`: cambios y resultados comprobados en el proyecto real.
-- `sql/vistas_supabase.sql`: dos vistas del bloque y una propuesta para Entrega 3.
-- `sql/vinculo_auth_usuarios.sql`: adaptación del vínculo con Supabase Auth.
-
-Las vistas y el vínculo con Auth fueron ejecutados desde SQL Editor en producción. Esta edición no agrega permisos de API ni políticas RLS.
+La vista queda como propuesta para revisión del grupo antes de incorporarla a una migración.

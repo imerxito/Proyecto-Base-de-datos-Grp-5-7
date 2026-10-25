@@ -1,39 +1,52 @@
-# Auditoría de normalización
+# Sección 4 — Auditoría de normalización
 
-## Alcance
+## Alcance y criterio
 
-La auditoría abarca las 16 tablas públicas de **Sabor y Stock**, revisadas el 24 de octubre de 2026. Se consideran las dependencias que se pueden justificar por PK, `UNIQUE` y restricciones declaradas; no se atribuyen al esquema reglas que no estén implementadas.
+Esta auditoría corresponde al esquema de 20 tablas descrito para la Entrega 2. Las dependencias se identifican a partir de las claves primarias y restricciones `UNIQUE` declaradas en las migraciones. Para las tablas que no se indican como excepción, la clave candidata determina los demás atributos y no se declara una dependencia transitiva adicional; por ello se consideran en BCNF respecto de las dependencias declaradas.
 
-## Evaluación por tabla
+En las tablas con clave primaria compuesta se verifica la dependencia respecto de la clave completa. Las excepciones E1, E2 y E5 son valores agregados entre filas; E3 conserva hechos históricos; E4 contiene dependencias funcionales entre atributos no clave.
 
-| Tabla | Claves y dependencias declaradas | Evaluación |
+## Dependencias principales por relación
+
+| Relación | Clave(s) candidata(s) y dependencias funcionales principales | Evaluación |
 |---|---|---|
-| `usuarios` | `id → nombre, rol, email, activo, created_at, auth_id`; `email` es `UNIQUE NOT NULL` y `auth_id` es `UNIQUE` nullable. | BCNF bajo las dependencias declaradas. `auth_id` identifica solo perfiles ya vinculados; al ser nullable no es clave candidata para todas las filas. |
-| `cajas` | `id → nombre, ubicacion, estado, created_at`. | BCNF. El nombre no está declarado único. |
-| `proveedores` | `id → nombre_empresa, contacto, telefono, direccion, activo, created_at`. | BCNF. No se observó clave alternativa declarada. |
-| `catalogos` | `id → nombre, descripcion, created_at`. | BCNF. El nombre no está declarado único. |
-| `ingredientes` | `id → nombre, unidad_medida, stock_actual, stock_minimo, proveedor_id, created_at`. | BCNF respecto de las dependencias declaradas. `unidad_medida` es texto; no hay entidad separada ni conversión de unidades modelada. |
-| `productos` | `id → catalogo_id, nombre, precio, disponible, created_at`. | BCNF. `catalogo_id` puede ser nulo. |
-| `recetas` | `id → producto_id, ingrediente_id, cantidad_requerida`. | BCNF con la PK observada. No se declaró `UNIQUE(producto_id, ingrediente_id)`, así que no se presume que esa pareja identifique una única línea. |
-| `compras` | `id → proveedor_id, usuario_id, total, fecha_compra, estado`. | BCNF según las dependencias de fila declaradas. `total` resume detalles de compra y debe auditarse como agregado entre filas. |
-| `compra_detalles` | `id → compra_id, ingrediente_id, cantidad, costo_unitario`. | BCNF según la PK observada. El costo es histórico de la compra; no depende del precio actual del ingrediente. No se declaró unicidad de ingrediente por compra. |
-| `movimientos_inventario` | `id → ingrediente_id, usuario_id, tipo_movimiento, cantidad, motivo, fecha_movimiento`. | BCNF según las dependencias declaradas. No contiene una FK a `compras` o `compra_detalles` que permita reconciliar automáticamente cada entrada de compra. |
-| `mesas` | `id → numero_o_nombre, capacidad, estado`; `numero_o_nombre` también es `UNIQUE NOT NULL`. | BCNF. El estado se conserva operativamente; su coherencia con comandas no está impuesta por una dependencia declarada entre tablas. |
-| `turnos_caja` | `id → caja_id, usuario_id, fechas, saldos, estado`. | BCNF. No se observó índice único parcial que prohíba más de un turno abierto por caja. |
-| `comandas` | `id → mesa_id, usuario_id, turno_caja_id, estado, created_at`. | BCNF según la PK y restricciones declaradas. |
-| `comanda_detalles` | `id → comanda_id, producto_id, cantidad, precio_unitario, estado`. | BCNF. `precio_unitario` conserva el precio aplicado a la línea; no debe sustituirse con el precio vigente del catálogo. |
-| `facturas` | `id → comanda_id, subtotal, impuestos, total, metodo_pago, fecha_emision`; `comanda_id` es `UNIQUE` pero nullable. | BCNF según las claves declaradas. Para filas enlazadas, `comanda_id` es clave alternativa; por ser nullable no identifica todas las filas. La igualdad `total = subtotal + impuestos` es una regla de negocio no protegida por un `CHECK` observado. |
-| `historiales` | `id → usuario_id, tabla_afectada, registro_id, accion, descripcion, fecha_accion`. | BCNF según la PK. `registro_id` es polimórfico y no tiene FK a todas las tablas. |
+| `unidad_medida` | `id_unidad`, `nombre` y `abreviatura` determinan la fila. | BCNF |
+| `categoria` | `id_categoria` y `nombre` determinan la fila. | BCNF |
+| `proveedor` | `id_proveedor` y `documento` determinan la fila. | BCNF |
+| `seccion` | `id_seccion` y `nombre` determinan la fila. | BCNF |
+| `caja` | `id_caja` determina la fila. | BCNF |
+| `usuario` | `id_usuario`, `auth_id`, `cedula` y `correo` determinan la fila. | BCNF |
+| `ingrediente` | `id_ingrediente` y `codigo` determinan la fila. `stock` es la excepción agregada E1. | BCNF salvo E1 |
+| `producto` | `id_producto` y `codigo` determinan la fila. | BCNF |
+| `receta` | `(id_producto, id_ingrediente) → cantidad`. | BCNF; la dependencia usa la clave completa |
+| `compra` | `id_compra` determina la fila. `total` es la excepción agregada E2. | BCNF salvo E2 |
+| `detalle_compra` | `(id_compra, id_ingrediente) → cantidad, precio_aplicado`. | BCNF; `precio_aplicado` es el hecho histórico E3 |
+| `movimiento_inventario` | `id_movimiento` determina la fila. | BCNF |
+| `mesa` | `id_mesa` y `numero` determinan la fila. | BCNF |
+| `comanda` | `id_comanda` determina la fila. | BCNF |
+| `detalle_comanda` | `id_detalle_comanda` determina la fila. | BCNF |
+| `factura` | `id_factura` determina la fila; `id_comanda` es `UNIQUE` y enlaza como máximo una factura por comanda cuando no es nulo. `total_pagar` depende de `(subtotal, propina)` (E4) y `subtotal` resume sus detalles (E5). | Excepciones E4 y E5 |
+| `detalle_factura` | `id_detalle_factura` determina la fila; `subtotal` depende de `(cantidad, precio_unitario)` (E4). | Excepción E4 |
+| `turno_caja` | `id_turno_caja` determina la fila. | BCNF |
+| `historial_caja` | `id_historial_caja` determina la fila. | BCNF |
+| `historial_mesa` | `id_historial_mesa` determina la fila. | BCNF |
 
-## Redundancias y controles pendientes
+## Excepciones deliberadas
 
-- `ingredientes.stock_actual` puede representar un saldo operativo, pero el esquema no declara una regla transaccional que lo iguale a entradas menos salidas de `movimientos_inventario`. No se presupone una fórmula para `AJUSTE`.
-- `compras.total` puede representar la suma de `compra_detalles.cantidad * costo_unitario`; esa suma es entre filas y no queda garantizada por un `CHECK` de una sola fila.
-- `facturas.total` conceptualmente puede derivarse de `subtotal + impuestos`, pero no se observó una restricción de coherencia. No se puede afirmar que la base rechace importes incoherentes.
-- `comanda_detalles.precio_unitario` y `compra_detalles.costo_unitario` son precios aplicados en la transacción y se justifican como valores históricos.
-- `mesas.estado` y `comandas.estado` son estados operativos relacionados. El esquema no sincroniza automáticamente la ocupación de la mesa con la existencia de comandas abiertas.
-- `recetas`, `compra_detalles` y `comanda_detalles` no declaran unicidad de sus pares de FK; cualquier regla de no duplicación requeriría confirmación del negocio y una restricción explícita.
+| Código | Atributos | Análisis y motivo | Control indicado |
+|---|---|---|---|
+| E1 | `ingrediente.stock` | Es un saldo derivado de las entradas y salidas registradas en `movimiento_inventario`. Se conserva para consultar el saldo operativo sin sumar movimientos en cada lectura. Los movimientos `AJUSTE` no entran en la fórmula porque el modelo no define si suman o restan. | `consultas/auditoria_derivados.sql`; el documento de entrega informa cero discrepancias. Se propone un trigger para la Entrega 3. |
+| E2 | `compra.total` | Resume la suma de `detalle_compra.cantidad * detalle_compra.precio_aplicado`. Es un agregado entre filas, no una dependencia de una columna de la misma línea. | `consultas/auditoria_derivados.sql`; el documento de entrega informa cero discrepancias. |
+| E3 | `detalle_compra.precio_aplicado`, `detalle_factura.precio_unitario` | Guardan el precio aplicado en la transacción. Puede diferir del precio vigente del ingrediente o producto; conservarlo permite representar fielmente operaciones pasadas. No es una redundancia que deba reemplazarse por el precio actual. | No requiere sincronización con el precio vigente; es una instantánea histórica. |
+| E4 | `factura.total_pagar`, `detalle_factura.subtotal` | Existen las dependencias `(subtotal, propina) → total_pagar` y `(cantidad, precio_unitario) → subtotal` entre atributos no clave. Se conservan para dejar el documento facturado legible tal como se emitió. | CHECK de coherencia en `factura` y `detalle_factura`, definidos en la migración 003. |
+| E5 | `factura.subtotal` | Resume la suma de `detalle_factura.subtotal`, por lo que se deriva de varias filas de detalle. | `consultas/auditoria_derivados.sql`; el documento de entrega informa cero discrepancias. |
 
 ## Conclusión
 
-Con las PK y claves `UNIQUE` observadas, las 16 relaciones alcanzan BCNF respecto de las dependencias funcionales declaradas. Esta conclusión no prueba reglas entre tablas ni agregados operativos: los totales de compra, el saldo de inventario, la coherencia factura-comanda y el estado de mesa requieren controles adicionales si el grupo decide exigirlos.
+Las relaciones sin excepción se encuentran en BCNF respecto de las dependencias funcionales declaradas por sus claves. E1, E2 y E5 son agregados que requieren auditoría entre filas; E3 conserva precios históricos; E4 mantiene importes coherentes mediante CHECK. La condición de cero discrepancias es la verificación reportada para los datos de la entrega, no una garantía automática frente a cualquier cambio futuro.
+
+## Observaciones de alcance
+
+- `factura.id_mesa` puede derivarse de `comanda.id_mesa` cuando la factura tiene comanda. Se mantiene opcional porque las ventas directas no tienen mesa ni comanda. La coincidencia entre ambas mesas queda como control propuesto para la Entrega 3.
+- `mesa.estado` se conserva como estado operativo que consulta la aplicación; no se trata como una dependencia funcional entre tablas.
+- La auditoría de derivados excluye movimientos `AJUSTE`, cuya semántica de signo aún está pendiente de decisión.
