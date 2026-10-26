@@ -1,0 +1,333 @@
+# ESPECIFICACIÓN TÉCNICA DE BASE DE DATOS
+## Políticas de Integridad Referencial (ON DELETE) y Diccionario de Datos Exhaustivo
+
+| Metadato | Detalle |
+| :--- | :--- |
+| **Proyecto / Sistema** | Sabor y Stock - Sistema de Gestión de Restaurante & Inventarios |
+| **Motor de Base de Datos** | PostgreSQL 15+ / Plataforma Supabase Cloud |
+| **Entorno de Ejecución** | Producción / Desarrollo Ágil (Next.js & Supabase Client) |
+| **Versión del Documento** | 1.0 - Validación de Restricciones, Integridad y Migraciones |
+
+---
+
+## 1. Introducción y Marco de Integridad Referencial
+
+El presente documento constituye la especificación formal de la arquitectura de datos para el sistema de información **Sabor y Stock**. En sistemas transaccionales para restaurantes y puntos de venta (POS), la integridad referencial y la coherencia del kardex de inventarios representan pilares críticos para la sustentabilidad operativa, la confiabilidad financiera y el cumplimiento tributario.
+
+Para regular el ciclo de vida de los registros y mitigar el riesgo de datos huérfanos o corrupciones por eliminación accidental, el motor de base de datos implementa tres políticas fundamentales de acción referencial mediante la cláusula `ON DELETE`:
+
+* **`CASCADE` (Borrado en Cascada):** Elimina en bloque los registros hijos que dependen estrictamente de la entidad padre cuando esta es suprimida. Se reserva exclusivamente para entidades dependientes o débiles que carecen de significado autónomo en el modelo de negocio.
+* **`SET NULL` (Desvinculación Nula):** Desvincula la relación asignando un valor nulo (`NULL`) en la clave foránea del registro hijo, manteniendo con vida dicho registro. Aplica en relaciones opcionales o históricas donde la desaparición del registro maestro no debe destruir la trazabilidad operativa ni las transacciones preexistentes.
+* **`RESTRICT` / `NO ACTION` (Restricción Estricta):** Bloquea e impide terminantemente la eliminación del registro padre si este cuenta con al menos un registro hijo asociado. Es la regla por defecto en relaciones de alto impacto contable, fiscal y de auditoría, evitando que se borren maestros con historial activo.
+
+> **Principio Arquitectónico:** En ambientes financieros y de control de materias primas, la eliminación física de registros maestros (*Hard Delete*) debe evitarse en favor de bajas lógicas (*Soft Delete* mediante banderas `activo = FALSE`). Sin embargo, las cláusulas `ON DELETE` son la última línea de defensa a nivel de motor SQL ante cualquier intento de depuración física o manipulación no autorizada.
+
+---
+
+## 2. Matriz Exhaustiva de Políticas de Borrado (`ON DELETE`)
+
+A continuación se detalla la totalidad de las relaciones de clave foránea (FK) del sistema, explicitando la tabla origen (hija), la columna asociada, la tabla destino (padre), la política aplicada y su justificación técnica y operativa:
+
+| Tabla Origen | Columna FK | Tabla Padre | Acción `ON DELETE` | Justificación Técnica | Justificación de Negocio / Operativa |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `ingredientes` | `proveedor_id` | `proveedores` | **`SET NULL`** | Garantiza que la eliminación física de un proveedor no viole la restricción de FK en ingredientes ni desate cascadas indeseadas. | Si un proveedor es dado de baja comercialmente, la materia prima física almacenada en cocina o bodega sigue existiendo y puede ser consumida. La desvinculación mantiene el stock y costo del ingrediente intactos. |
+| `productos` | `catalogo_id` | `catalogos` | **`RESTRICT`** | Impide que queden filas en `productos` con punteros nulos o huérfanos en su categoría clasificatoria. | Protege la navegación del menú en comandas y POS. No se permite eliminar una categoría entera (ej. "Bebidas") si aún existen productos comercializables asociados a ella. |
+| `recetas` | `producto_id` | `productos` | **`CASCADE`** | Mantiene la consistencia atómica de la composición. La receta es una entidad débil asociativa entre productos e insumos. | Si un producto es eliminado formalmente del catálogo, su formulación técnica de insumos pierde vigencia automáticamente y debe ser purgada para evitar cálculos muertos. |
+| `recetas` | `ingrediente_id` | `ingredientes` | **`CASCADE`** | Limpia las referencias cruzadas de preparación cuando un insumo es retirado definitivamente del sistema. | Evita que el recetario intente calcular porciones con insumos inexistentes, lo que bloquearía los triggers de descuento de inventario al facturar. |
+| `compras` | `proveedor_id` | `proveedores` | **`RESTRICT`** | Bloquea la supresión de entidades padre con historial transaccional en compras. | Blindaje contable y fiscal. No es admisible eliminar la identidad de un proveedor al cual ya se le emitieron órdenes de compra registradas en libros contables. |
+| `compras` | `usuario_id` | `usuarios` | **`RESTRICT`** | Protege la integridad referencial de auditoría del usuario responsable de registrar la compra. | Principio de no repudio de compras y gastos. Se debe conocer qué usuario del sistema autorizó y cargó cada compra al balance. |
+| `compra_detalles` | `compra_id` | `compras` | **`CASCADE`** | Composición fuerte: los renglones individuales de factura de compra dependen ontológicamente de la cabecera. | Si una orden de compra o factura de entrada es descartada o eliminada en su totalidad durante su creación, todos sus ítems asociados se purgan en lote. |
+| `compra_detalles` | `ingrediente_id` | `ingredientes` | **`RESTRICT`** | Previene la eliminación de materias primas que tienen historial de compras pagadas. | Consistencia del histórico de costos de adquisición. No se puede borrar un ingrediente si existen registros de pagos y precios unitarios históricos vinculados a él. |
+| `movimientos_inventario` | `ingrediente_id` | `ingredientes` | **`CASCADE`** | Permite la limpieza completa del kardex únicamente en caso de purga explícita del ingrediente maestro. | Si se autoriza la eliminación física de un ingrediente en ambiente de pruebas o depuración, su historial de kardex se retira conjuntamente para evitar llaves foráneas inválidas. |
+| `movimientos_inventario` | `usuario_id` | `usuarios` | **`SET NULL`** | Preserva el registro histórico del movimiento de inventario aunque la cuenta del colaborador sea retirada. | Auditoría de almacén: si un empleado deja de laborar en el restaurante, las entradas, mermas o ajustes ejecutados en el pasado se conservan para cuadre de inventarios. |
+| `turnos_caja` | `caja_id` | `cajas` | **`RESTRICT`** | Impide eliminar el terminal de facturación (POS) si registra arqueos y turnos contables. | Consistencia de auditoría financiera. Una caja registradora física no puede eliminarse si tiene historial de dinero recaudado o turnos cerrados. |
+| `turnos_caja` | `usuario_id` | `usuarios` | **`RESTRICT`** | Protege la responsabilidad patrimonial del cajero sobre los fondos recaudados en caja. | Responsabilidad fiscal: el cajero que abrió un turno y manejó efectivo responde formalmente por los arqueos. Su registro no puede suprimirse de la base de datos. |
+| `comandas` | `mesa_id` | `mesas` | **`SET NULL`** | Desvincula la comanda de la mesa física sin suprimir los consumos ni los valores recaudados. | Flexibilidad de sala: si el restaurante renueva o reorganiza la distribución de mesas, las órdenes históricas se conservan para reportes de venta general. |
+| `comandas` | `usuario_id` | `usuarios` | **`RESTRICT`** | Asegura el rastreo del colaborador de servicio que originó la orden de comanda. | Control operativo y comisiones: garantiza identificar qué mesero tomó el pedido, evitando que se borren usuarios con servicios activos o históricos. |
+| `comandas` | `turno_caja_id` | `turnos_caja` | **`RESTRICT`** | Bloquea la eliminación del turno de caja si existen pedidos liquidados o abiertos en él. | Cuadre de caja: una comanda forma parte integral del arqueo de turno; suprimir el turno rompería el balance entre pedidos atendidos y dinero reportado. |
+| `comanda_detalles` | `comanda_id` | `comandas` | **`CASCADE`** | Composición fuerte: cada platillo servido pertenece exclusivamente a esa orden de mesa. | Si una orden es cancelada o descartada en su totalidad antes de facturación, se remueven todos sus renglones para liberar recursos del sistema. |
+| `comanda_detalles` | `producto_id` | `productos` | **`RESTRICT`** | Impide borrar del catálogo un producto que fue vendido y consumido en comandas previas. | Estabilidad de reportes de ventas: permite calcular los platillos más vendidos y analizar la rentabilidad histórica sin perder la referencia al plato. |
+| `facturas` | `comanda_id` | `comandas` | **`RESTRICT`** | Blindaje absoluto: no permite eliminar una comanda si ya cuenta con una factura fiscal o de caja emitida. | Obligación tributaria: jamás debe permitirse la anulación física o desaparición de un consumo que originó una factura emitida, previniendo evasión o fraude interno. |
+| `historiales` | `usuario_id` | `usuarios` | **`SET NULL`** | Garantiza la inmutabilidad del log de auditoría ante la baja de cuentas de usuario. | Los eventos de seguridad, edición y borrado permanecen registrados en la bitácora aunque el usuario autor de la acción sea purgado posteriormente. |
+
+---
+
+## 3. Diccionario de Datos: Conceptos y Columnas Clave
+
+Dentro del modelo relacional del restaurante, existen seis columnas conceptuales determinantes que gobiernan la lógica de inventarios, la distribución física, la seguridad y la facturación:
+
+### 3.1. `unidad_medida`
+* **Ubicación y Tipo:** Tabla `ingredientes` | `VARCHAR(20) NOT NULL`
+* **Definición Técnica:** Escala métrica estándar utilizada para cuantificar el insumo físico en bodega, compras y formulación de recetas.
+* **Impacto Operativo y de Negocio:** Control exacto de materias primas sin ambigüedades. Los triggers de inventario descuentan fracciones (ej. $0.20\text{ Kg}$ por hamburguesa). Permite registrar compras a granel y consumos fraccionados garantizando consistencia matemática.
+* **Valores y Reglas:** Valores recomendados: `'Kg'`, `'g'`, `'L'`, `'ml'`, `'Unidad'`, `'Lata'`, `'Botella'`.
+
+### 3.2. `categoria` / `catalogo_id`
+* **Ubicación y Tipo:** Tablas `catalogos` y `productos` | `UUID NOT NULL (FK)`
+* **Definición Técnica:** Agrupación taxonómica y comercial de los productos ofrecidos en la carta del restaurante.
+* **Impacto Operativo y de Negocio:** Permite organizar la interfaz del personal de servicio en el POS (clasificando en "Entradas", "Platos Fuertes", "Bebidas", "Postres"). Facilita el análisis financiero y rentabilidad por línea de menú.
+* **Valores y Reglas:** Ejemplos: "Bebidas Calientes", "Cortes de Carne", "Licores y Cócteles".
+
+### 3.3. `proveedor` / `proveedor_id`
+* **Ubicación y Tipo:** Tablas `proveedores`, `ingredientes`, `compras` | `UUID (FK)`
+* **Definición Técnica:** Identificación formal de la persona natural o jurídica encargada del abastecimiento de insumos al negocio.
+* **Impacto Operativo y de Negocio:** Trazabilidad de la cadena de suministro. Centraliza datos comerciales (contacto, teléfono, dirección) y vincula facturas de compra y costos unitarios.
+* **Valores y Reglas:** Ejemplos: "Carnes y Cortes del Cesar", "Distribuidora Avícola San Jorge".
+
+### 3.4. `seccion`
+* **Ubicación y Tipo:** Tabla `mesas` (o distribución de sala) | `VARCHAR(50) DEFAULT 'SALON'`
+* **Definición Técnica:** Zona física o ambiente arquitectónico del local en donde se encuentra ubicada la mesa.
+* **Impacto Operativo y de Negocio:** Optimiza la logística de atención al permitir balancear la carga de trabajo entre meseros según zonas físicas. Facilita además la apertura o cierre temporal de ambientes específicos.
+* **Valores y Reglas:** Valores comunes: `'Terraza'`, `'Salón Principal'`, `'Zona VIP'`, `'Barra'`.
+
+### 3.5. `caja` / `caja_id`
+* **Ubicación y Tipo:** Tablas `cajas` y `turnos_caja` | `UUID NOT NULL (FK)`
+* **Definición Técnica:** Terminal físico o estación de facturación (POS) habilitado para transacciones monetarias y control de efectivo.
+* **Impacto Operativo y de Negocio:** Desacopla el flujo de dinero de los empleados. Permite gestionar de manera individual los turnos, fondos base (aperturas), arqueos intermedios y cierres de turno (cuadre X y Z).
+* **Valores y Reglas:** Ejemplos: "Caja Principal - Entrada", "Caja Barra", "Caja Terraza".
+
+### 3.6. `usuario` / `usuario_id`
+* **Ubicación y Tipo:** Tablas `usuarios`, `turnos_caja`, `comandas`, `historiales` | `UUID NOT NULL (FK)`
+* **Definición Técnica:** Identidad del colaborador autenticado que realiza operaciones sensibles dentro del sistema de información.
+* **Impacto Operativo y de Negocio:** Seguridad, autorización basada en roles (RBAC) y principio de no repudio. Permite saber qué mesero tomó un pedido, qué cajero cobró una factura y qué administrador alteró una receta.
+* **Valores y Reglas:** Roles gobernados: `'ADMIN'`, `'GERENTE'`, `'CAJERO'`, `'MESERO'`, `'COCINERO'`.
+
+---
+
+## 4. Diccionario de Datos Completo por Entidad
+
+A continuación se presenta la ficha técnica de cada una de las 16 tablas del esquema relacional implementado en PostgreSQL / Supabase:
+
+### 4.1. Tabla: `usuarios`
+* **Propósito:** Almacena los datos de los colaboradores y administradores del sistema, sus roles y credenciales.
+
+| Columna | Tipo de Dato | Nulabilidad | Llave / Restricción | Valor por Defecto | Descripción Funcional |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `id` | `UUID` | NOT NULL | PK | `gen_random_uuid()` | Identificador único universal del usuario. |
+| `nombre` | `VARCHAR(100)` | NOT NULL | - | *None* | Nombre completo del colaborador. |
+| `rol` | `VARCHAR(50)` | NOT NULL | CHECK | *None* | Rol: `ADMIN`, `CAJERO`, `MESERO`, `GERENTE`, `COCINERO`. |
+| `email` | `VARCHAR(150)` | NOT NULL | UNIQUE | *None* | Correo electrónico único para autenticación. |
+| `activo` | `BOOLEAN` | NULL | - | `TRUE` | Bandera de estado para borrado lógico (*soft delete*). |
+| `created_at` | `TIMESTAMPTZ` | NULL | - | `NOW()` | Fecha y hora de creación de la cuenta. |
+
+---
+
+### 4.2. Tabla: `cajas`
+* **Propósito:** Registra los puntos físicos de venta o terminales de cobro del restaurante.
+
+| Columna | Tipo de Dato | Nulabilidad | Llave / Restricción | Valor por Defecto | Descripción Funcional |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `id` | `UUID` | NOT NULL | PK | `gen_random_uuid()` | Identificador único universal de la caja. |
+| `nombre` | `VARCHAR(50)` | NOT NULL | - | *None* | Nombre o identificación de la estación POS. |
+| `ubicacion` | `VARCHAR(100)` | NULL | - | *None* | Ubicación física en el local comercial. |
+| `estado` | `VARCHAR(20)` | NULL | CHECK | `'CERRADA'` | Estado operativo: `ABIERTA`, `CERRADA`, `MANTENIMIENTO`. |
+| `created_at` | `TIMESTAMPTZ` | NULL | - | `NOW()` | Timestamp de registro en el sistema. |
+
+---
+
+### 4.3. Tabla: `proveedores`
+* **Propósito:** Catálogo de proveedores de alimentos, bebidas y materias primas.
+
+| Columna | Tipo de Dato | Nulabilidad | Llave / Restricción | Valor por Defecto | Descripción Funcional |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `id` | `UUID` | NOT NULL | PK | `gen_random_uuid()` | Identificador único universal del proveedor. |
+| `nombre_empresa` | `VARCHAR(150)` | NOT NULL | - | *None* | Razón social o nombre comercial del proveedor. |
+| `contacto` | `VARCHAR(100)` | NULL | - | *None* | Nombre del asesor comercial o persona de contacto. |
+| `telefono` | `VARCHAR(20)` | NULL | - | *None* | Teléfono de contacto o WhatsApp de pedidos. |
+| `direccion` | `TEXT` | NULL | - | *None* | Dirección física de bodega o despacho. |
+| `activo` | `BOOLEAN` | NULL | - | `TRUE` | Indica si el proveedor está habilitado para compras. |
+| `created_at` | `TIMESTAMPTZ` | NULL | - | `NOW()` | Timestamp de registro. |
+
+---
+
+### 4.4. Tabla: `catalogos`
+* **Propósito:** Categorías comerciales de productos (Entradas, Platos Fuertes, etc.).
+
+| Columna | Tipo de Dato | Nulabilidad | Llave / Restricción | Valor por Defecto | Descripción Funcional |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `id` | `UUID` | NOT NULL | PK | `gen_random_uuid()` | Identificador único de la categoría. |
+| `nombre` | `VARCHAR(100)` | NOT NULL | - | *None* | Nombre visible de la categoría en el menú. |
+| `descripcion` | `TEXT` | NULL | - | *None* | Detalles opcionales sobre el catálogo. |
+| `created_at` | `TIMESTAMPTZ` | NULL | - | `NOW()` | Timestamp de registro. |
+
+---
+
+### 4.5. Tabla: `ingredientes`
+* **Propósito:** Materias primas e insumos inventariables que componen los productos del menú.
+
+| Columna | Tipo de Dato | Nulabilidad | Llave / Restricción | Valor por Defecto | Descripción Funcional |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `id` | `UUID` | NOT NULL | PK | `gen_random_uuid()` | Identificador único del insumo. |
+| `nombre` | `VARCHAR(100)` | NOT NULL | - | *None* | Nombre del ingrediente (ej. Carne Molida, Tomate). |
+| `unidad_medida` | `VARCHAR(20)` | NOT NULL | - | *None* | Unidad de cuantificación física (`Kg`, `L`, `Unidad`). |
+| `stock_actual` | `NUMERIC(10,2)` | NULL | CHECK ($\ge 0$) | `0.00` | Cantidad física disponible en almacén. |
+| `stock_minimo` | `NUMERIC(10,2)` | NULL | CHECK ($\ge 0$) | `0.00` | Umbral para alertas de reabastecimiento. |
+| `proveedor_id` | `UUID` | NULL | FK | *None* | Proveedor habitual asociado (`ON DELETE SET NULL`). |
+| `created_at` | `TIMESTAMPTZ` | NULL | - | `NOW()` | Timestamp de registro. |
+
+---
+
+### 4.6. Tabla: `productos`
+* **Propósito:** Platillos, bebidas y combos comercializados a los clientes finales.
+
+| Columna | Tipo de Dato | Nulabilidad | Llave / Restricción | Valor por Defecto | Descripción Funcional |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `id` | `UUID` | NOT NULL | PK | `gen_random_uuid()` | Identificador único del producto. |
+| `catalogo_id` | `UUID` | NOT NULL | FK | *None* | Categoría asociada (`ON DELETE RESTRICT`). |
+| `nombre` | `VARCHAR(100)` | NOT NULL | - | *None* | Nombre comercial del ítem para la comanda y factura. |
+| `precio` | `NUMERIC(10,2)` | NOT NULL | CHECK ($\ge 0$) | *None* | Precio unitario de venta al público. |
+| `disponible` | `BOOLEAN` | NULL | - | `TRUE` | Disponibilidad en carta para toma de pedidos. |
+| `created_at` | `TIMESTAMPTZ` | NULL | - | `NOW()` | Timestamp de registro. |
+
+---
+
+### 4.7. Tabla: `recetas`
+* **Propósito:** Tabla intermedia asociativa que define la formulación de insumos por cada producto.
+
+| Columna | Tipo de Dato | Nulabilidad | Llave / Restricción | Valor por Defecto | Descripción Funcional |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `id` | `UUID` | NOT NULL | PK | `gen_random_uuid()` | Identificador único de la receta. |
+| `producto_id` | `UUID` | NOT NULL | FK, UQ | *None* | Producto preparado (`ON DELETE CASCADE`). |
+| `ingrediente_id` | `UUID` | NOT NULL | FK, UQ | *None* | Insumo requerido (`ON DELETE CASCADE`). |
+| `cantidad_requerida` | `NUMERIC(10,2)` | NOT NULL | CHECK ($> 0$) | *None* | Cantidad de ingrediente consumida por unidad de plato. |
+
+---
+
+### 4.8. Tabla: `compras`
+* **Propósito:** Encabezados de facturas u órdenes de adquisición de insumos a proveedores.
+
+| Columna | Tipo de Dato | Nulabilidad | Llave / Restricción | Valor por Defecto | Descripción Funcional |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `id` | `UUID` | NOT NULL | PK | `gen_random_uuid()` | Identificador único universal de la compra. |
+| `proveedor_id` | `UUID` | NOT NULL | FK | *None* | Proveedor emisor (`ON DELETE RESTRICT`). |
+| `usuario_id` | `UUID` | NOT NULL | FK | *None* | Usuario que registró la compra (`ON DELETE RESTRICT`). |
+| `total` | `NUMERIC(12,2)` | NOT NULL | CHECK ($\ge 0$) | `0.00` | Importe total bruto de la compra. |
+| `fecha_compra` | `TIMESTAMPTZ` | NULL | - | `NOW()` | Fecha oficial del documento de compra. |
+| `estado` | `VARCHAR(20)` | NULL | CHECK | `'COMPLETADA'` | Estado: `PENDIENTE`, `COMPLETADA`, `CANCELADA`. |
+
+---
+
+### 4.9. Tabla: `compra_detalles`
+* **Propósito:** Renglones específicos de ingredientes ingresados en cada compra.
+
+| Columna | Tipo de Dato | Nulabilidad | Llave / Restricción | Valor por Defecto | Descripción Funcional |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `id` | `UUID` | NOT NULL | PK | `gen_random_uuid()` | Identificador único de la línea de compra. |
+| `compra_id` | `UUID` | NOT NULL | FK | *None* | Compra a la que pertenece (`ON DELETE CASCADE`). |
+| `ingrediente_id` | `UUID` | NOT NULL | FK | *None* | Insumo adquirido (`ON DELETE RESTRICT`). |
+| `cantidad` | `NUMERIC(10,2)` | NOT NULL | CHECK ($> 0$) | *None* | Unidades/kilos adquiridos (dispara trigger de entrada). |
+| `costo_unitario` | `NUMERIC(10,2)` | NOT NULL | CHECK ($\ge 0$) | *None* | Costo unitario de compra sin impuestos. |
+
+---
+
+### 4.10. Tabla: `movimientos_inventario`
+* **Propósito:** Kardex general que audita toda entrada, salida, ajuste o merma de insumos.
+
+| Columna | Tipo de Dato | Nulabilidad | Llave / Restricción | Valor por Defecto | Descripción Funcional |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `id` | `UUID` | NOT NULL | PK | `gen_random_uuid()` | Identificador único del movimiento. |
+| `ingrediente_id` | `UUID` | NOT NULL | FK | *None* | Insumo impactado (`ON DELETE CASCADE`). |
+| `usuario_id` | `UUID` | NULL | FK | *None* | Usuario responsable (`ON DELETE SET NULL`). |
+| `tipo_movimiento` | `VARCHAR(20)` | NOT NULL | CHECK | *None* | Tipo: `ENTRADA`, `SALIDA`, `MERMA`, `AJUSTE`. |
+| `cantidad` | `NUMERIC(10,2)` | NOT NULL | - | *None* | Magnitud del movimiento físico. |
+| `motivo` | `TEXT` | NULL | - | *None* | Justificación u orden asociada al movimiento. |
+| `fecha_movimiento` | `TIMESTAMPTZ` | NULL | - | `NOW()` | Timestamp exacto de la operación. |
+
+---
+
+### 4.11. Tabla: `mesas`
+* **Propósito:** Gestión de ubicación física y capacidad de comensales en el salón.
+
+| Columna | Tipo de Dato | Nulabilidad | Llave / Restricción | Valor por Defecto | Descripción Funcional |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `id` | `UUID` | NOT NULL | PK | `gen_random_uuid()` | Identificador único de la mesa. |
+| `numero_o_nombre` | `VARCHAR(50)` | NOT NULL | UNIQUE | *None* | Código visible de la mesa (ej. Mesa 01, VIP-A). |
+| `capacidad` | `INT` | NOT NULL | CHECK ($> 0$) | *None* | Número máximo de comensales sentados. |
+| `estado` | `VARCHAR(20)` | NULL | CHECK | `'LIBRE'` | Estado: `LIBRE`, `OCUPADA`, `RESERVADA`, `MANTENIMIENTO`. |
+
+---
+
+### 4.12. Tabla: `turnos_caja`
+* **Propósito:** Sesiones operativas de cobro, fondos fijos de caja y arqueos.
+
+| Columna | Tipo de Dato | Nulabilidad | Llave / Restricción | Valor por Defecto | Descripción Funcional |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `id` | `UUID` | NOT NULL | PK | `gen_random_uuid()` | Identificador único del turno. |
+| `caja_id` | `UUID` | NOT NULL | FK | *None* | Estación POS asignada (`ON DELETE RESTRICT`). |
+| `usuario_id` | `UUID` | NOT NULL | FK | *None* | Cajero responsable (`ON DELETE RESTRICT`). |
+| `fecha_apertura` | `TIMESTAMPTZ` | NULL | - | `NOW()` | Timestamp de apertura del turno. |
+| `fecha_cierre` | `TIMESTAMPTZ` | NULL | - | *None* | Timestamp de cierre tras arqueo final. |
+| `saldo_inicial` | `NUMERIC(10,2)` | NOT NULL | CHECK ($\ge 0$) | *None* | Monto de base en efectivo de apertura. |
+| `saldo_final` | `NUMERIC(10,2)` | NULL | - | *None* | Monto reportado al cierre. |
+| `estado` | `VARCHAR(20)` | NULL | CHECK | `'ABIERTO'` | Estado del turno: `ABIERTO`, `CERRADO`. |
+
+---
+
+### 4.13. Tabla: `comandas`
+* **Propósito:** Órdenes de pedido generadas por los comensales en mesa.
+
+| Columna | Tipo de Dato | Nulabilidad | Llave / Restricción | Valor por Defecto | Descripción Funcional |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `id` | `UUID` | NOT NULL | PK | `gen_random_uuid()` | Identificador único universal de la orden. |
+| `mesa_id` | `UUID` | NULL | FK | *None* | Mesa asignada (`ON DELETE SET NULL`). |
+| `usuario_id` | `UUID` | NOT NULL | FK | *None* | Mesero responsable (`ON DELETE RESTRICT`). |
+| `turno_caja_id` | `UUID` | NOT NULL | FK | *None* | Turno de cobro vinculado (`ON DELETE RESTRICT`). |
+| `estado` | `VARCHAR(20)` | NULL | CHECK | `'PREPARANDO'` | Estado: `PENDIENTE`, `PREPARANDO`, `LISTA`, `ENTREGADA`, `PAGADA`, `CANCELADA`. |
+| `created_at` | `TIMESTAMPTZ` | NULL | - | `NOW()` | Timestamp de creación de la comanda. |
+
+---
+
+### 4.14. Tabla: `comanda_detalles`
+* **Propósito:** Líneas de platillos individuales asociadas a una orden de mesa.
+
+| Columna | Tipo de Dato | Nulabilidad | Llave / Restricción | Valor por Defecto | Descripción Funcional |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `id` | `UUID` | NOT NULL | PK | `gen_random_uuid()` | Identificador de la línea de pedido. |
+| `comanda_id` | `UUID` | NOT NULL | FK | *None* | Comanda asociada (`ON DELETE CASCADE`). |
+| `producto_id` | `UUID` | NOT NULL | FK | *None* | Plato o bebida solicitada (`ON DELETE RESTRICT`). |
+| `cantidad` | `INT` | NOT NULL | CHECK ($> 0$) | *None* | Número de unidades solicitadas. |
+| `precio_unitario` | `NUMERIC(10,2)` | NOT NULL | CHECK ($\ge 0$) | *None* | Precio unitario fijado al momento de pedir (histórico inmutable). |
+| `estado` | `VARCHAR(20)` | NULL | CHECK | `'PENDIENTE'` | Estado: `PENDIENTE`, `ENTREGADO`, `CANCELADO`. |
+
+---
+
+### 4.15. Tabla: `facturas`
+* **Propósito:** Documento tributario y registro de liquidación financiera de la comanda.
+
+| Columna | Tipo de Dato | Nulabilidad | Llave / Restricción | Valor por Defecto | Descripción Funcional |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `id` | `UUID` | NOT NULL | PK | `gen_random_uuid()` | Identificador único de la factura. |
+| `comanda_id` | `UUID` | NOT NULL | FK, UQ | *None* | Comanda liquidada (`ON DELETE RESTRICT`). |
+| `subtotal` | `NUMERIC(12,2)` | NOT NULL | CHECK ($\ge 0$) | *None* | Valor antes de impuestos y propinas. |
+| `impuestos` | `NUMERIC(12,2)` | NOT NULL | CHECK ($\ge 0$) | `0.00` | Impuesto al consumo o IVA liquidado. |
+| `total` | `NUMERIC(12,2)` | NOT NULL | CHECK ($\ge 0$) | *None* | Monto final cancelado por el cliente. |
+| `metodo_pago` | `VARCHAR(50)` | NOT NULL | CHECK | *None* | Método: `EFECTIVO`, `TARJETA_DEBITO`, `TARJETA_CREDITO`, `TRANSFERENCIA`, `MIXTO`. |
+| `fecha_emision` | `TIMESTAMPTZ` | NULL | - | `NOW()` | Timestamp oficial de liquidación. |
+
+---
+
+### 4.16. Tabla: `historiales`
+* **Propósito:** Log inmutable de auditoría para registro de cambios en el sistema.
+
+| Columna | Tipo de Dato | Nulabilidad | Llave / Restricción | Valor por Defecto | Descripción Funcional |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `id` | `UUID` | NOT NULL | PK | `gen_random_uuid()` | Identificador único del registro de auditoría. |
+| `usuario_id` | `UUID` | NULL | FK | *None* | Usuario que ejecutó la acción (`ON DELETE SET NULL`). |
+| `tabla_afectada` | `VARCHAR(50)` | NOT NULL | - | *None* | Nombre de la tabla modificada. |
+| `registro_id` | `UUID` | NOT NULL | - | *None* | ID del registro afectado. |
+| `accion` | `VARCHAR(20)` | NOT NULL | CHECK | *None* | Tipo de acción: `INSERT`, `UPDATE`, `DELETE`. |
+| `descripcion` | `TEXT` | NULL | - | *None* | Detalle técnico de los campos modificados. |
+| `fecha_accion` | `TIMESTAMPTZ` | NULL | - | `NOW()` | Timestamp exacto del evento. |
+
+---
+
+## 5. Recomendaciones de Implementación en Supabase
+
+1. **Row Level Security (RLS):**
+   Al exponer las tablas vía REST/GraphQL mediante el cliente de Supabase (`@supabase/supabase-js`), es mandatorio habilitar RLS en todas las tablas transaccionales. Los meseros solo deben tener permisos `SELECT` e `INSERT` en `comandas` y `comanda_detalles`, mientras que los roles `CAJERO` y `ADMIN` deben gobernar `facturas` y `turnos_caja`.
+
+2. **Indexación de Claves Foráneas:**
+   PostgreSQL no crea índices automáticamente en las columnas que son únicamente Foreign Keys (a menos que tengan constraint `UNIQUE`). Se recomienda encarecidamente crear índices sobre columnas de alta frecuencia de join como `comanda_detalles.comanda_id`, `recetas.producto_id`, `turnos_caja.caja_id` e `ingredientes.proveedor_id` para optimizar la velocidad de lectura y evitar bloqueos en cascada.
+
+3. **Políticas de Borrado Lógico (*Soft Delete*):**
+   Como regla de negocio general, las entidades maestras (`usuarios`, `productos`, `ingredientes`, `proveedores`) no deben ser purgadas físicamente en operaciones de producción. La columna `activo = FALSE` garantiza que los reportes contables anuales preserven la integridad histórica sin alterar la operativa del restaurante.
