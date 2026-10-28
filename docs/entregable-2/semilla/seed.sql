@@ -24,11 +24,11 @@ INSERT INTO seccion (id_seccion, nombre) VALUES (1,'Terraza'),(2,'Salon principa
 INSERT INTO caja (id_caja, nombre) VALUES (1,'Caja principal'),(2,'Caja barra');
 
 INSERT INTO usuario (id_usuario, auth_id, nombre, cedula, telefono, correo, rol) VALUES
- (1,'00000000-0000-4000-8000-000000000001','Admin Demo','1000000001','3100000001','admin@saborstock.example.com','Administrador'),
- (2,'00000000-0000-4000-8000-000000000002','Cajero Uno','1000000002','3100000002','caja1@saborstock.example.com','Caja'),
- (3,'00000000-0000-4000-8000-000000000003','Cajera Dos','1000000003','3100000003','caja2@saborstock.example.com','Caja'),
- (4,'00000000-0000-4000-8000-000000000004','Mesero Uno','1000000004','3100000004','mesero1@saborstock.example.com','Mesero'),
- (5,'00000000-0000-4000-8000-000000000005','Mesera Dos','1000000005','3100000005','mesero2@saborstock.example.com','Mesero');
+ (1,NULL,'Administrador General','1000000001','3100000001','admin@saborstock.example.com','Administrador'),
+ (2,NULL,'Cajero Uno','1000000002','3100000002','caja1@saborstock.example.com','Caja'),
+ (3,NULL,'Cajera Dos','1000000003','3100000003','caja2@saborstock.example.com','Caja'),
+ (4,NULL,'Mesero Uno','1000000004','3100000004','mesero1@saborstock.example.com','Mesero'),
+ (5,NULL,'Mesera Dos','1000000005','3100000005','mesero2@saborstock.example.com','Mesero');
 
 -- Ingredientes (el stock se calcula mas abajo a partir de los movimientos).
 INSERT INTO ingrediente (id_ingrediente, codigo, nombre, id_unidad, stock_minimo, precio_referencia) VALUES
