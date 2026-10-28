@@ -15,7 +15,7 @@ En las tablas con clave primaria compuesta se verifica la dependencia respecto d
 | `proveedor` | `id_proveedor` y `documento` determinan la fila. | BCNF |
 | `seccion` | `id_seccion` y `nombre` determinan la fila. | BCNF |
 | `caja` | `id_caja` determina la fila. | BCNF |
-| `usuario` | `id_usuario`, `auth_id`, `cedula` y `correo` determinan la fila. | BCNF |
+| `usuario` | `id_usuario`, `cedula` y `correo` determinan la fila. `auth_id` es único cuando tiene valor y puede ser nulo para perfiles sin cuenta vinculada. | BCNF |
 | `ingrediente` | `id_ingrediente` y `codigo` determinan la fila. `stock` es la excepción agregada E1. | BCNF salvo E1 |
 | `producto` | `id_producto` y `codigo` determinan la fila. | BCNF |
 | `receta` | `(id_producto, id_ingrediente) → cantidad`. | BCNF; la dependencia usa la clave completa |
