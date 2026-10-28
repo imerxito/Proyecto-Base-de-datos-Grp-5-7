@@ -6,7 +6,7 @@ DB="${1:-sabor_stock_e2}"
 cd "$(dirname "$0")/.."
 dropdb --if-exists "$DB"
 createdb "$DB"
-for f in migraciones/*.sql; do
+for f in ../../supabase/migrations/*.sql; do
   echo ">> $f"
   psql -v ON_ERROR_STOP=1 -q -d "$DB" -f "$f"
 done
