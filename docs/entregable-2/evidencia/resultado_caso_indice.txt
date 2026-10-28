@@ -1,0 +1,64 @@
+Timing is off.
+== 1. Carga de volumen: 30.000 facturas (ano 2025) con 4 lineas cada una ==
+INSERT 0 30000
+INSERT 0 120000
+UPDATE 30000
+DROP INDEX
+ANALYZE
+ lineas_en_tabla 
+-----------------
+          120014
+(1 row)
+
+== 2. ANTES (sin indice) ==
+                                                         QUERY PLAN                                                         
+----------------------------------------------------------------------------------------------------------------------------
+ Hash Join  (cost=2383.23..2401.84 rows=4 width=47) (actual time=19.735..19.739 rows=4 loops=1)
+   Hash Cond: (p.id_producto = d.id_producto)
+   Buffers: shared hit=884
+   ->  Seq Scan on producto p  (cost=0.00..14.90 rows=490 width=36) (actual time=0.003..0.005 rows=7 loops=1)
+         Buffers: shared hit=1
+   ->  Hash  (cost=2383.18..2383.18 rows=4 width=19) (actual time=19.724..19.724 rows=4 loops=1)
+         Buckets: 1024  Batches: 1  Memory Usage: 9kB
+         Buffers: shared hit=883
+         ->  Seq Scan on detalle_factura d  (cost=0.00..2383.18 rows=4 width=19) (actual time=0.533..19.718 rows=4 loops=1)
+               Filter: (id_factura = 15000)
+               Rows Removed by Filter: 120010
+               Buffers: shared hit=883
+ Planning:
+   Buffers: shared hit=19
+ Planning Time: 0.311 ms
+ Execution Time: 19.758 ms
+(16 rows)
+
+== 3. Crear indice ==
+CREATE INDEX
+ANALYZE
+== 4. DESPUES (con indice) ==
+                                                                         QUERY PLAN                                                                          
+-------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Hash Join  (cost=19.71..38.32 rows=4 width=48) (actual time=0.133..0.136 rows=4 loops=1)
+   Hash Cond: (p.id_producto = d.id_producto)
+   Buffers: shared hit=5 read=2
+   ->  Seq Scan on producto p  (cost=0.00..14.90 rows=490 width=36) (actual time=0.004..0.004 rows=7 loops=1)
+         Buffers: shared hit=1
+   ->  Hash  (cost=19.66..19.66 rows=4 width=20) (actual time=0.124..0.124 rows=4 loops=1)
+         Buckets: 1024  Batches: 1  Memory Usage: 9kB
+         Buffers: shared hit=4 read=2
+         ->  Index Scan using idx_detalle_factura_factura on detalle_factura d  (cost=0.29..19.66 rows=4 width=20) (actual time=0.116..0.121 rows=4 loops=1)
+               Index Cond: (id_factura = 15000)
+               Buffers: shared hit=4 read=2
+ Planning:
+   Buffers: shared hit=21 read=1
+ Planning Time: 0.272 ms
+ Execution Time: 0.154 ms
+(15 rows)
+
+== 5. Limpieza: se borran las facturas de prueba (CASCADE borra sus lineas) ==
+DELETE 30000
+ANALYZE
+ facturas_restantes 
+--------------------
+                  6
+(1 row)
+
